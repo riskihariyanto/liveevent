@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d12">
+<title>Moderasi</title>
+<style>
+:root {
+  --bg: #0b0d12;
+  --panel: #151922;
+  --panel-2: #1b2130;
+  --line: #262d3f;
+  --text: #f2f4f8;
+  --muted: #8b93a7;
+  --accent: #3b82f6;
+  --ok: #22c55e;
+  --danger: #ef4444;
+  box-sizing: border-box;
+}
+*, *::before, *::after { box-sizing: inherit; }
+html, body {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+button, input, textarea { font: inherit; color: inherit; touch-action: manipulation; }
+button { cursor: pointer; border: 0; border-radius: 10px; padding: 10px 14px; font-weight: 700; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+.hidden { display: none !important; }
+
+#login {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--bg);
+}
+.login-box {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.login-box h1 { margin: 0; font-size: 1.5rem; }
+.login-box p { margin: 0; color: var(--muted); min-height: 1.2em; }
+.login-box p.error { color: var(--danger); }
+.field {
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  outline: none;
+}
+.field:focus { border-color: var(--accent); }
+.primary { background: var(--accent); color: #fff; }
+.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+
+#console {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+}
+.bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  padding: 12px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+.bar h1 { margin: 0; font-size: 1.1rem; }
+.status { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 0.9rem; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); }
+.dot.on { background: var(--ok); }
+.grow { flex: 1; }
+.modes { display: flex; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 3px; gap: 3px; }
+.modes button { background: transparent; color: var(--muted); padding: 8px 14px; }
+.modes button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+
+.layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr);
+  gap: 16px;
+  padding: 16px;
+}
+.col { min-height: 0; display: flex; flex-direction: column; gap: 16px; }
+.card {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+.card.fill { flex: 1; }
+.card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  font-weight: 700;
+}
+.card header small { color: var(--muted); font-weight: 500; }
+.badge { min-width: 26px; padding: 2px 9px; text-align: center; background: var(--accent); border-radius: 99px; font-size: 0.85rem; }
+.scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.empty { margin: auto; padding: 24px; text-align: center; color: var(--muted); line-height: 1.5; }
+
+.item { display: flex; flex-direction: column; gap: 10px; padding: 12px; background: var(--panel-2); border: 1px solid transparent; border-radius: 14px; }
+.item.first { border-color: var(--accent); }
+.bubble { padding: 8px 14px; border-radius: 14px; line-height: 1.35; overflow-wrap: anywhere; }
+.bubble b { display: block; font-size: 0.75rem; opacity: 0.8; margin-bottom: 2px; }
+.meta { color: var(--muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.actions .approve { flex: 1; background: var(--ok); color: #04140a; }
+.actions .reject { flex: 1; background: #2a3145; }
+.actions .ban { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+
+.row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; background: var(--panel-2); border-radius: 12px; }
+.row .name { font-weight: 600; overflow-wrap: anywhere; }
+.row .id { color: var(--muted); font-size: 0.75rem; }
+.row button { background: #2a3145; padding: 8px 12px; flex: none; }
+
+.words { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.words textarea { min-height: 140px; resize: vertical; }
+.hint { padding: 0 14px 12px; color: var(--muted); font-size: 0.8rem; }
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
+  transform: translate(-50%, 16px);
+  max-width: calc(100% - 32px);
+  padding: 10px 16px;
+  background: #222a3d;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  font-size: 0.9rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 30;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+@media (max-width: 860px) {
+  html, body { height: auto; }
+  #console { height: auto; min-height: 100%; }
+  .layout { grid-template-columns: 1fr; }
+  .card.fill .scroll { max-height: 60vh; }
+}
+</style>
+</head>
+<body>
+<section id="login">
+  <div class="login-box">
+    <h1>Panel Moderasi</h1>
+    <p id="loginMsg">Masuk dengan akun admin.</p>
+    <input id="emailInput" class="field" type="email" autocomplete="username" placeholder="Email admin" aria-label="Email admin">
+    <input id="passInput" class="field" type="password" autocomplete="current-password" placeholder="Password" aria-label="Password admin">
+    <button class="primary" onclick="submitLogin()">Masuk</button>
+  </div>
+</section>
+
+<main id="console">
+  <div class="bar">
+    <h1>Moderasi</h1>
+    <div class="status"><span id="dot" class="dot"></span><span id="statusText">Menyambung…</span></div>
+    <div class="grow"></div>
+    <div class="modes" role="group" aria-label="Mode moderasi">
+      <button id="modeAuto" onclick="setMode('auto')" aria-pressed="true">Otomatis</button>
+      <button id="modeManual" onclick="setMode('manual')" aria-pressed="false">Manual</button>
+    </div>
+    <div class="modes" role="group" aria-label="Reaksi emoji">
+      <button id="emoteOn" onclick="setEmotes(true)" aria-pressed="true">Emoji aktif</button>
+      <button id="emoteOff" onclick="setEmotes(false)" aria-pressed="false">Emoji mati</button>
+    </div>
+    <button class="ghost" onclick="logout()">Keluar</button>
+  </div>
+
+  <div class="layout">
+    <div class="col">
+      <section class="card fill">
+        <header>
+          <span>Antrean persetujuan <small>A setujui · R tolak (teratas)</small></span>
+          <span id="pendingCount" class="badge">0</span>
+        </header>
+        <div id="queue" class="scroll"></div>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="card">
+        <header><span>Filter kata</span><small id="wordCount">0 kata</small></header>
+        <div class="words">
+          <textarea id="words" class="field" placeholder="Satu kata per baris" aria-label="Daftar kata terlarang" oninput="markWordsDirty()"></textarea>
+          <button class="primary" onclick="saveWords()">Simpan daftar</button>
+        </div>
+        <div class="hint">Kata yang cocok diganti *** pada pesan dan nickname.</div>
+      </section>
+
+      <section class="card fill">
+        <header><span>Perangkat diblokir</span><span id="banCount" class="badge">0</span></header>
+        <div id="banned" class="scroll"></div>
+      </section>
+    </div>
+  </div>
+</main>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script type="module">
+import {
+  auth, db, signInWithEmailAndPassword, signOut, onAuthStateChanged,
+  collection, doc, getDoc, setDoc, deleteDoc, onSnapshot, query, orderBy, limit,
+  writeBatch, serverTimestamp
+} from './firebase.js';
+import { HEX_COLOR, DEFAULT_WORDS, textOn } from './common.js';
+
+const BASE_TITLE = 'Moderasi';
+
+const app = {
+  user: null,
+  unsubs: [],
+  mode: 'auto',
+  emotesOn: true,
+  items: new Map(),
+  nodes: new Map(),
+  busy: new Set(),
+  wordsDirty: false,
+  toastTimer: 0
+};
+
+const els = {
+  login: document.getElementById('login'),
+  loginMsg: document.getElementById('loginMsg'),
+  emailInput: document.getElementById('emailInput'),
+  passInput: document.getElementById('passInput'),
+  dot: document.getElementById('dot'),
+  statusText: document.getElementById('statusText'),
+  modeAuto: document.getElementById('modeAuto'),
+  modeManual: document.getElementById('modeManual'),
+  emoteOn: document.getElementById('emoteOn'),
+  emoteOff: document.getElementById('emoteOff'),
+  queue: document.getElementById('queue'),
+  pendingCount: document.getElementById('pendingCount'),
+  words: document.getElementById('words'),
+  wordCount: document.getElementById('wordCount'),
+  banned: document.getElementById('banned'),
+  banCount: document.getElementById('banCount'),
+  toast: document.getElementById('toast')
+};
+
+const stateRef = doc(db, 'config', 'state');
+
+function toast(message) {
+  els.toast.textContent = message;
+  els.toast.classList.add('show');
+  clearTimeout(app.toastTimer);
+  app.toastTimer = setTimeout(() => els.toast.classList.remove('show'), 2800);
+}
+
+function showLogin(message, isError) {
+  els.login.classList.remove('hidden');
+  els.loginMsg.textContent = message;
+  els.loginMsg.classList.toggle('error', Boolean(isError));
+  if (!els.emailInput.value) els.emailInput.focus();
+  else els.passInput.focus();
+}
+
+function setStatus(text, online) {
+  els.statusText.textContent = text;
+  els.dot.classList.toggle('on', online);
+}
+
+function emptyNote(text) {
+  const note = document.createElement('div');
+  note.className = 'empty';
+  note.textContent = text;
+  return note;
+}
+
+function renderToggles() {
+  els.modeAuto.setAttribute('aria-pressed', String(app.mode === 'auto'));
+  els.modeManual.setAttribute('aria-pressed', String(app.mode === 'manual'));
+  els.emoteOn.setAttribute('aria-pressed', String(app.emotesOn));
+  els.emoteOff.setAttribute('aria-pressed', String(!app.emotesOn));
+  renderQueueEmpty();
+}
+
+function renderQueueEmpty() {
+  const existing = els.queue.querySelector('.empty');
+  if (existing) existing.remove();
+  if (app.nodes.size) return;
+  els.queue.appendChild(emptyNote(app.mode === 'auto'
+    ? 'Mode otomatis aktif. Pesan tayang langsung setelah disaring filter kata.'
+    : 'Antrean kosong. Pesan baru akan muncul di sini.'));
+}
+
+function refreshQueueMeta() {
+  const count = app.nodes.size;
+  els.pendingCount.textContent = String(count);
+  document.title = (count ? '(' + count + ') ' : '') + BASE_TITLE;
+  let first = true;
+  els.queue.querySelectorAll('.item').forEach((node) => {
+    node.classList.toggle('first', first);
+    first = false;
+  });
+  renderQueueEmpty();
+}
+
+function formatTime(value) {
+  if (!value || typeof value.toDate !== 'function') return '--:--:--';
+  return value.toDate().toLocaleTimeString('id-ID', { hour12: false });
+}
+
+function buildItem(id, item) {
+  const node = document.createElement('div');
+  node.className = 'item';
+  node.dataset.id = id;
+
+  const color = HEX_COLOR.test(item.color) ? item.color : '#3b82f6';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.style.backgroundColor = color;
+  bubble.style.color = textOn(color);
+  const who = document.createElement('b');
+  who.textContent = item.nickname;
+  const text = document.createElement('span');
+  text.textContent = item.text;
+  bubble.appendChild(who);
+  bubble.appendChild(text);
+
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  meta.textContent = formatTime(item.ts) + ' · ' + String(item.uid).slice(0, 8);
+
+  const actions = document.createElement('div');
+  actions.className = 'actions';
+  [['approve', 'Setujui'], ['reject', 'Tolak'], ['ban', 'Blokir']].forEach(([action, label]) => {
+    const button = document.createElement('button');
+    button.className = action;
+    button.dataset.action = action;
+    button.textContent = label;
+    actions.appendChild(button);
+  });
+
+  node.appendChild(bubble);
+  node.appendChild(meta);
+  node.appendChild(actions);
+  return node;
+}
+
+function addItem(id, item, index) {
+  if (app.nodes.has(id)) return;
+  app.items.set(id, item);
+  const node = buildItem(id, item);
+  app.nodes.set(id, node);
+  const siblings = els.queue.querySelectorAll('.item');
+  els.queue.insertBefore(node, siblings[index] || null);
+}
+
+function removeItem(id) {
+  const node = app.nodes.get(id);
+  if (node) node.remove();
+  app.nodes.delete(id);
+  app.items.delete(id);
+}
+
+function resetQueue() {
+  app.items.clear();
+  app.nodes.clear();
+  els.queue.innerHTML = '';
+  refreshQueueMeta();
+}
+
+function applyQueueChanges(snap) {
+  snap.docChanges().forEach((change) => {
+    if (change.type === 'added') addItem(change.doc.id, change.doc.data(), change.newIndex);
+    else if (change.type === 'removed') removeItem(change.doc.id);
+  });
+  refreshQueueMeta();
+}
+
+function renderBanned(list) {
+  els.banned.innerHTML = '';
+  els.banCount.textContent = String(list.length);
+  if (!list.length) {
+    els.banned.appendChild(emptyNote('Belum ada perangkat yang diblokir.'));
+    return;
+  }
+  list.forEach((entry) => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const info = document.createElement('div');
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.textContent = entry.nickname || 'Tanpa nama';
+    const id = document.createElement('div');
+    id.className = 'id';
+    id.textContent = entry.uid.slice(0, 12);
+    info.appendChild(name);
+    info.appendChild(id);
+    const button = document.createElement('button');
+    button.dataset.action = 'unban';
+    button.dataset.uid = entry.uid;
+    button.textContent = 'Buka blokir';
+    row.appendChild(info);
+    row.appendChild(button);
+    els.banned.appendChild(row);
+  });
+}
+
+function renderState(data) {
+  app.mode = data.mode === 'manual' ? 'manual' : 'auto';
+  app.emotesOn = data.emotes !== false;
+  const words = Array.isArray(data.words) ? data.words : [];
+  els.wordCount.textContent = words.length + ' kata';
+  if (!app.wordsDirty && document.activeElement !== els.words) els.words.value = words.join('\n');
+  renderToggles();
+}
+
+function denied(err) {
+  if (err && err.code === 'permission-denied') {
+    toast('Akun ini bukan admin. Periksa email di firestore.rules.');
+    signOut(auth);
+    return;
+  }
+  setStatus('Koneksi bermasalah', false);
+}
+
+function stopConsole() {
+  app.unsubs.forEach((unsubscribe) => unsubscribe());
+  app.unsubs = [];
+  resetQueue();
+}
+
+async function startConsole() {
+  stopConsole();
+  setStatus('Menyambung…', false);
+  try {
+    const snap = await getDoc(stateRef);
+    if (!snap.exists()) {
+      await setDoc(stateRef, { mode: 'auto', emotes: true, words: DEFAULT_WORDS });
+    }
+  } catch (err) {
+    denied(err);
+    return;
+  }
+
+  app.unsubs.push(onSnapshot(stateRef, { includeMetadataChanges: true }, (snap) => {
+    if (snap.exists()) renderState(snap.data());
+    setStatus(snap.metadata.fromCache ? 'Menyambung ulang…' : 'Terhubung', !snap.metadata.fromCache);
+  }, denied));
+
+  app.unsubs.push(onSnapshot(query(collection(db, 'pending'), orderBy('ts', 'asc'), limit(200)), applyQueueChanges, denied));
+
+  app.unsubs.push(onSnapshot(collection(db, 'banned'), (snap) => {
+    renderBanned(snap.docs.map((item) => ({ uid: item.id, nickname: item.data().nickname || '' })));
+  }, denied));
+}
+
+async function submitLogin() {
+  const email = els.emailInput.value.trim();
+  const password = els.passInput.value;
+  if (!email || !password) {
+    showLogin('Isi email dan password.', true);
+    return;
+  }
+  els.loginMsg.textContent = 'Memeriksa…';
+  els.loginMsg.classList.remove('error');
+  try {
+    await signInWithEmailAndPassword(auth, email, password);
+    els.passInput.value = '';
+  } catch (err) {
+    const message = err && err.code === 'auth/too-many-requests'
+      ? 'Terlalu banyak percobaan. Coba lagi nanti.'
+      : 'Email atau password salah.';
+    showLogin(message, true);
+  }
+}
+
+function logout() {
+  signOut(auth);
+}
+
+async function setMode(mode) {
+  if (mode !== 'auto' && mode !== 'manual') return;
+  try {
+    await setDoc(stateRef, { mode }, { merge: true });
+  } catch (err) {
+    toast('Gagal mengubah mode.');
+  }
+}
+
+async function setEmotes(flag) {
+  try {
+    await setDoc(stateRef, { emotes: Boolean(flag) }, { merge: true });
+  } catch (err) {
+    toast('Gagal mengubah pengaturan emoji.');
+  }
+}
+
+async function approveItem(id) {
+  const item = app.items.get(id);
+  if (!item || app.busy.has(id)) return;
+  app.busy.add(id);
+  try {
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'approved', id), {
+      uid: item.uid,
+      nickname: item.nickname,
+      text: item.text,
+      color: item.color,
+      ts: serverTimestamp()
+    });
+    batch.delete(doc(db, 'pending', id));
+    await batch.commit();
+  } catch (err) {
+    toast('Gagal menyetujui pesan.');
+  } finally {
+    app.busy.delete(id);
+  }
+}
+
+async function rejectItem(id) {
+  if (!app.items.has(id) || app.busy.has(id)) return;
+  app.busy.add(id);
+  try {
+    await deleteDoc(doc(db, 'pending', id));
+  } catch (err) {
+    toast('Gagal menolak pesan.');
+  } finally {
+    app.busy.delete(id);
+  }
+}
+
+async function banSender(id) {
+  const item = app.items.get(id);
+  if (!item) return;
+  if (!window.confirm('Blokir perangkat milik "' + item.nickname + '" selama acara?')) return;
+  try {
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'banned', item.uid), { nickname: item.nickname, at: serverTimestamp() });
+    app.items.forEach((value, key) => {
+      if (value.uid === item.uid) batch.delete(doc(db, 'pending', key));
+    });
+    await batch.commit();
+  } catch (err) {
+    toast('Gagal memblokir perangkat.');
+  }
+}
+
+async function unbanDevice(uid) {
+  try {
+    await deleteDoc(doc(db, 'banned', uid));
+  } catch (err) {
+    toast('Gagal membuka blokir.');
+  }
+}
+
+function markWordsDirty() {
+  app.wordsDirty = true;
+}
+
+async function saveWords() {
+  const list = els.words.value.split(/[\n,]+/).map((word) => word.trim()).filter(Boolean);
+  try {
+    await setDoc(stateRef, { words: list }, { merge: true });
+    app.wordsDirty = false;
+    toast('Daftar kata disimpan.');
+  } catch (err) {
+    toast('Gagal menyimpan daftar kata.');
+  }
+}
+
+function firstItemId() {
+  const first = els.queue.querySelector('.item');
+  return first ? first.dataset.id : null;
+}
+
+els.queue.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-action]');
+  if (!button) return;
+  const node = button.closest('.item');
+  if (!node) return;
+  const id = node.dataset.id;
+  if (button.dataset.action === 'approve') approveItem(id);
+  else if (button.dataset.action === 'reject') rejectItem(id);
+  else if (button.dataset.action === 'ban') banSender(id);
+});
+
+els.banned.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-action="unban"]');
+  if (button) unbanDevice(button.dataset.uid);
+});
+
+[els.emailInput, els.passInput].forEach((input) => {
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') submitLogin();
+  });
+});
+
+document.addEventListener('keydown', (event) => {
+  if (!app.user || event.metaKey || event.ctrlKey || event.altKey) return;
+  const tag = event.target && event.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+  const id = firstItemId();
+  if (!id) return;
+  if (event.key === 'a' || event.key === 'A') approveItem(id);
+  else if (event.key === 'r' || event.key === 'R') rejectItem(id);
+});
+
+window.submitLogin = submitLogin;
+window.logout = logout;
+window.setMode = setMode;
+window.setEmotes = setEmotes;
+window.markWordsDirty = markWordsDirty;
+window.saveWords = saveWords;
+
+onAuthStateChanged(auth, (user) => {
+  if (user && !user.isAnonymous) {
+    app.user = user;
+    els.login.classList.add('hidden');
+    startConsole();
+    return;
+  }
+  app.user = null;
+  stopConsole();
+  setStatus('Belum masuk', false);
+  showLogin('Masuk dengan akun admin.', false);
+});
+
+renderToggles();
+renderBanned([]);
+</script>
+</body>
+</html>

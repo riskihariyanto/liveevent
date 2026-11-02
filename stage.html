@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#00ff00">
+<title>Live Wall</title>
+<style>
+:root {
+  --bg: #00ff00;
+  --text: #ffffff;
+  --muted: #aab2c5;
+  --accent: #38bdf8;
+  box-sizing: border-box;
+}
+*, *::before, *::after { box-sizing: inherit; }
+html, body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+body.idle { cursor: none; }
+
+#stage {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  padding: 2.4vh 2vw;
+}
+
+#wall {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.chat {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.card {
+  position: absolute;
+  bottom: -26vh;
+  max-width: 30%;
+  padding: 1.6vh 1.6vw;
+  border-radius: 2.4vh;
+  will-change: transform, opacity;
+  animation-name: drift;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+.card .who {
+  display: block;
+  margin-bottom: 0.4vh;
+  font-size: clamp(0.9rem, 1.3vw, 1.8rem);
+  font-weight: 700;
+  opacity: 0.85;
+}
+.card .text {
+  display: block;
+  font-size: clamp(1.3rem, 2.4vw, 3.4rem);
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+#sky {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 5;
+}
+.floater {
+  position: absolute;
+  bottom: -12vh;
+  line-height: 1;
+  will-change: transform, opacity;
+  animation-name: float;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+.offline {
+  position: absolute;
+  top: 1.6vh;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.8vh 1.6vw;
+  background: #b91c1c;
+  border-radius: 99px;
+  font-size: clamp(0.9rem, 1.2vw, 1.6rem);
+  font-weight: 700;
+  z-index: 10;
+}
+.hidden { display: none; }
+
+@keyframes drift {
+  0% { opacity: 0; transform: translate3d(0, 0, 0) scale(0.96); }
+  5% { opacity: 1; }
+  50% { transform: translate3d(var(--sway), -60vh, 0) scale(1); }
+  88% { opacity: 1; }
+  100% { opacity: 0; transform: translate3d(0, -128vh, 0) scale(1); }
+}
+@keyframes float {
+  0% { opacity: 0; transform: translate3d(0, 0, 0) rotate(0deg) scale(0.6); }
+  10% { opacity: 1; transform: translate3d(calc(var(--dx) * 0.1), -12vh, 0) rotate(calc(var(--rot) * 0.2)) scale(1); }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translate3d(var(--dx), -118vh, 0) rotate(var(--rot)) scale(1.1); }
+}
+
+</style>
+</head>
+<body>
+<main id="stage">
+  <section id="wall">
+    <div id="chat" class="chat"></div>
+  </section>
+  <div id="sky"></div>
+  <div id="offline" class="offline hidden">Menyambung ulang…</div>
+</main>
+
+<script type="module">
+import { db, doc, collection, query, orderBy, limit, onSnapshot } from './firebase.js';
+import { EMOTES, HEX_COLOR, textOn, buildCensor } from './common.js';
+
+const DRAIN_MS = 1100;
+const MAX_CARDS = 14;
+const LANES = 3;
+const CARD_TIME_MIN = 16;
+const CARD_TIME_SPAN = 5;
+const QUEUE_MAX = 100;
+const MAX_FLOATERS = 60;
+const EMOTE_PER_BATCH = 10;
+const SEEN_MAX = 500;
+
+const els = {
+  chat: document.getElementById('chat'),
+  sky: document.getElementById('sky'),
+  offline: document.getElementById('offline')
+};
+
+const runtime = {
+  queue: [],
+  cards: 0,
+  lane: 0,
+  floaters: 0,
+  idleTimer: 0,
+  wakeLock: null,
+  censor: (text) => text,
+  seenMessages: new Set(),
+  emoteStamps: new Map(),
+  messagesPrimed: false,
+  emotesPrimed: false
+};
+
+function millis(value) {
+  return value && typeof value.toMillis === 'function' ? value.toMillis() : 0;
+}
+
+function addCard(data) {
+  if (runtime.cards >= MAX_CARDS) return false;
+  const el = document.createElement('div');
+  el.className = 'card';
+  const color = HEX_COLOR.test(data.color) ? data.color : '#3b82f6';
+  el.style.backgroundColor = color;
+  el.style.color = textOn(color);
+
+  const who = document.createElement('span');
+  who.className = 'who';
+  who.textContent = data.nickname;
+
+  const text = document.createElement('span');
+  text.className = 'text';
+  text.textContent = data.text;
+
+  el.appendChild(who);
+  el.appendChild(text);
+
+  const duration = CARD_TIME_MIN + Math.random() * CARD_TIME_SPAN;
+  const lane = runtime.lane % LANES;
+  runtime.lane += 1;
+  el.style.left = (lane * (100 / LANES) + Math.random() * 3) + '%';
+  el.style.animationDuration = duration + 's';
+  el.style.setProperty('--sway', Math.random() * 4 - 2 + 'vw');
+
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    el.remove();
+    runtime.cards -= 1;
+  };
+  el.addEventListener('animationend', release);
+  setTimeout(release, duration * 1000 + 800);
+
+  els.chat.appendChild(el);
+  runtime.cards += 1;
+  return true;
+}
+
+function drainQueue() {
+  if (!runtime.queue.length) return;
+  if (addCard(runtime.queue[0])) runtime.queue.shift();
+}
+
+function enqueueChat(data) {
+  if (typeof data.text !== 'string' || typeof data.nickname !== 'string') return;
+  runtime.queue.push({
+    nickname: runtime.censor(data.nickname),
+    text: runtime.censor(data.text),
+    color: data.color
+  });
+  while (runtime.queue.length > QUEUE_MAX) runtime.queue.shift();
+}
+
+function launchEmote(emoji) {
+  if (runtime.floaters >= MAX_FLOATERS) return;
+  const duration = 3.2 + Math.random() * 2.4;
+  const el = document.createElement('span');
+  el.className = 'floater';
+  el.textContent = emoji;
+  el.style.left = 4 + Math.random() * 90 + 'vw';
+  el.style.fontSize = 5 + Math.random() * 5 + 'vh';
+  el.style.animationDuration = duration + 's';
+  el.style.setProperty('--dx', Math.random() * 16 - 8 + 'vw');
+  el.style.setProperty('--rot', Math.random() * 50 - 25 + 'deg');
+
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    el.remove();
+    runtime.floaters -= 1;
+  };
+  el.addEventListener('animationend', release);
+  setTimeout(release, duration * 1000 + 800);
+
+  els.sky.appendChild(el);
+  runtime.floaters += 1;
+}
+
+function spawnEmotes(counts) {
+  if (!counts || typeof counts !== 'object') return;
+  Object.keys(counts).forEach((key) => {
+    if (!Object.prototype.hasOwnProperty.call(EMOTES, key)) return;
+    const total = Math.min(Math.floor(Number(counts[key])) || 0, EMOTE_PER_BATCH);
+    for (let i = 0; i < total; i += 1) {
+      setTimeout(() => launchEmote(EMOTES[key]), Math.random() * 400);
+    }
+  });
+}
+
+function listenState() {
+  onSnapshot(doc(db, 'config', 'state'), { includeMetadataChanges: true }, (snap) => {
+    els.offline.classList.toggle('hidden', !snap.metadata.fromCache);
+    if (snap.exists()) runtime.censor = buildCensor(snap.data().words);
+  }, () => {
+    els.offline.classList.remove('hidden');
+  });
+}
+
+function listenMessages() {
+  const source = query(collection(db, 'approved'), orderBy('ts', 'desc'), limit(10));
+  onSnapshot(source, (snap) => {
+    if (!runtime.messagesPrimed) {
+      if (!snap.metadata.fromCache) runtime.messagesPrimed = true;
+      snap.docs.forEach((item) => runtime.seenMessages.add(item.id));
+      return;
+    }
+    snap.docChanges()
+      .filter((change) => change.type === 'added' && !runtime.seenMessages.has(change.doc.id))
+      .map((change) => ({ id: change.doc.id, data: change.doc.data() }))
+      .sort((a, b) => millis(a.data.ts) - millis(b.data.ts))
+      .forEach((item) => {
+        runtime.seenMessages.add(item.id);
+        enqueueChat(item.data);
+      });
+    if (runtime.seenMessages.size > SEEN_MAX) {
+      runtime.seenMessages = new Set(Array.from(runtime.seenMessages).slice(-200));
+    }
+  }, () => {
+    els.offline.classList.remove('hidden');
+  });
+}
+
+function listenEmotes() {
+  const source = query(collection(db, 'emotes'), orderBy('ts', 'desc'), limit(30));
+  onSnapshot(source, (snap) => {
+    if (!runtime.emotesPrimed) {
+      if (!snap.metadata.fromCache) runtime.emotesPrimed = true;
+      snap.docs.forEach((item) => runtime.emoteStamps.set(item.id, millis(item.data().ts)));
+      return;
+    }
+    snap.docChanges().forEach((change) => {
+      if (change.type === 'removed') return;
+      const data = change.doc.data();
+      const stamp = millis(data.ts);
+      if (!stamp || runtime.emoteStamps.get(change.doc.id) === stamp) return;
+      runtime.emoteStamps.set(change.doc.id, stamp);
+      spawnEmotes(data.counts);
+    });
+  }, () => {});
+}
+
+function toggleFullscreen() {
+  if (document.fullscreenElement) {
+    document.exitFullscreen();
+    return;
+  }
+  const root = document.documentElement;
+  if (root.requestFullscreen) root.requestFullscreen().catch(() => {});
+}
+
+function requestWakeLock() {
+  if (!navigator.wakeLock || document.hidden) return;
+  navigator.wakeLock.request('screen').then((lock) => {
+    runtime.wakeLock = lock;
+  }).catch(() => {});
+}
+
+function wakeCursor() {
+  document.body.classList.remove('idle');
+  clearTimeout(runtime.idleTimer);
+  runtime.idleTimer = setTimeout(() => document.body.classList.add('idle'), 3000);
+}
+
+window.toggleFullscreen = toggleFullscreen;
+
+window.addEventListener('offline', () => els.offline.classList.remove('hidden'));
+document.addEventListener('mousemove', wakeCursor);
+document.addEventListener('dblclick', toggleFullscreen);
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'f' || event.key === 'F') toggleFullscreen();
+});
+document.addEventListener('visibilitychange', requestWakeLock);
+
+listenState();
+listenMessages();
+listenEmotes();
+requestWakeLock();
+wakeCursor();
+setInterval(drainQueue, DRAIN_MS);
+</script>
+</body>
+</html>
