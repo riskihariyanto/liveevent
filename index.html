@@ -189,7 +189,7 @@ button { cursor: pointer; border: 0; }
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s ease, transform 0.2s ease;
-  z-index: 10;
+  z-index: 30;
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
@@ -201,6 +201,76 @@ button { cursor: pointer; border: 0; }
   color: #fcd34d;
   font-size: 0.9rem;
   line-height: 1.4;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(3, 10, 28, 0.9);
+}
+.crop-card {
+  width: 100%;
+  max-width: 380px;
+  max-height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+}
+.crop-card h2 { margin: 0; font-size: 1.1rem; }
+.crop-card p { margin: 0; color: var(--muted); font-size: 0.85rem; line-height: 1.4; }
+.crop-stage {
+  position: relative;
+  width: min(calc(100vw - 64px), 340px);
+  aspect-ratio: 1;
+  margin: 0 auto;
+  overflow: hidden;
+  border-radius: 16px;
+  background: #000;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+}
+.crop-stage img {
+  position: absolute;
+  left: 0;
+  top: 0;
+  max-width: none;
+  transform-origin: 0 0;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+.crop-ring {
+  position: absolute;
+  left: 14%;
+  top: 14%;
+  width: 72%;
+  height: 72%;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 999px rgba(6, 18, 48, 0.68);
+  pointer-events: none;
+}
+.crop-zoom { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 0.85rem; }
+.crop-zoom input { flex: 1; accent-color: var(--accent-hi); height: 28px; }
+.crop-actions { display: flex; gap: 10px; }
+.crop-actions button { flex: 1; }
+.ghost {
+  padding: 14px 20px;
+  font-weight: 600;
+  background: var(--panel-hi);
+  color: var(--text);
+  border-radius: 14px;
 }
 
 @media (max-height: 700px) {
@@ -259,6 +329,21 @@ button { cursor: pointer; border: 0; }
     <p>Moderator menonaktifkan pengiriman pesan dari perangkat ini selama acara berlangsung.</p>
   </section>
 </main>
+<div id="cropModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Atur foto profil">
+  <div class="crop-card">
+    <h2>Atur foto profil</h2>
+    <p>Geser foto dan atur zoom sampai pas di dalam lingkaran.</p>
+    <div id="cropStage" class="crop-stage">
+      <img id="cropImg" alt="">
+      <div class="crop-ring"></div>
+    </div>
+    <label class="crop-zoom"><span>Zoom</span><input id="cropRange" type="range" min="0" max="100" value="0" step="1" oninput="cropZoom(this.value)"></label>
+    <div class="crop-actions">
+      <button class="ghost" type="button" onclick="cropCancel()">Batal</button>
+      <button class="primary" type="button" onclick="cropConfirm()">Pakai foto</button>
+    </div>
+  </div>
+</div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script type="module">
@@ -279,6 +364,8 @@ const KEY_PHOTO = 'lec.photo';
 const PHOTO_SIZES = [96, 72, 56];
 const PHOTO_QUALITIES = [0.72, 0.55, 0.4];
 const PHOTO_MAX_CHARS = 11000;
+const CROP_RING = 0.72;
+const CROP_MAX_ZOOM = 4;
 const PLACEHOLDER_CHAT = 'Tulis pesan singkat…';
 
 const store = {
@@ -372,28 +459,8 @@ function renderPhoto() {
   els.photoClear.classList.toggle('hidden', !has);
 }
 
-function loadImage(file) {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve(img);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error('image'));
-    };
-    img.src = url;
-  });
-}
-
-async function compressPhoto(file) {
-  const img = await loadImage(file);
-  const side = Math.min(img.naturalWidth, img.naturalHeight);
+function compressPhoto(img, sx, sy, side) {
   if (!side) return '';
-  const sx = (img.naturalWidth - side) / 2;
-  const sy = (img.naturalHeight - side) / 2;
   for (const size of PHOTO_SIZES) {
     const canvas = document.createElement('canvas');
     canvas.width = size;
@@ -410,11 +477,171 @@ async function compressPhoto(file) {
   return '';
 }
 
+const crop = {
+  url: '',
+  nw: 0,
+  nh: 0,
+  size: 0,
+  ring: 0,
+  edge: 0,
+  k: 1,
+  kmin: 1,
+  ox: 0,
+  oy: 0,
+  pinch: 0,
+  pointers: new Map()
+};
+
+const cropEls = {
+  modal: document.getElementById('cropModal'),
+  stage: document.getElementById('cropStage'),
+  img: document.getElementById('cropImg'),
+  range: document.getElementById('cropRange')
+};
+
+function cropScaleLimit(value) {
+  return Math.min(crop.kmin * CROP_MAX_ZOOM, Math.max(crop.kmin, value));
+}
+
+function cropClamp() {
+  const minX = crop.edge + crop.ring - crop.nw * crop.k;
+  const minY = crop.edge + crop.ring - crop.nh * crop.k;
+  crop.ox = Math.min(crop.edge, Math.max(minX, crop.ox));
+  crop.oy = Math.min(crop.edge, Math.max(minY, crop.oy));
+}
+
+function cropApply() {
+  cropEls.img.style.transform = 'translate(' + crop.ox + 'px, ' + crop.oy + 'px) scale(' + crop.k + ')';
+  cropEls.range.value = String(((crop.k / crop.kmin - 1) / (CROP_MAX_ZOOM - 1)) * 100);
+}
+
+function cropSetScale(value, fx, fy) {
+  const next = cropScaleLimit(value);
+  const px = (fx - crop.ox) / crop.k;
+  const py = (fy - crop.oy) / crop.k;
+  crop.k = next;
+  crop.ox = fx - px * next;
+  crop.oy = fy - py * next;
+  cropClamp();
+  cropApply();
+}
+
+function cropZoom(value) {
+  const t = Number(value) / 100;
+  cropSetScale(crop.kmin * (1 + (CROP_MAX_ZOOM - 1) * t), crop.size / 2, crop.size / 2);
+}
+
+function cropInit() {
+  crop.size = cropEls.stage.clientWidth;
+  crop.ring = crop.size * CROP_RING;
+  crop.edge = (crop.size - crop.ring) / 2;
+  crop.nw = cropEls.img.naturalWidth;
+  crop.nh = cropEls.img.naturalHeight;
+  cropEls.img.width = crop.nw;
+  cropEls.img.height = crop.nh;
+  crop.kmin = crop.ring / Math.min(crop.nw, crop.nh);
+  crop.k = crop.kmin;
+  crop.ox = (crop.size - crop.nw * crop.k) / 2;
+  crop.oy = (crop.size - crop.nh * crop.k) / 2;
+  cropClamp();
+  cropApply();
+}
+
+function cropClose() {
+  cropEls.modal.classList.add('hidden');
+  cropEls.img.removeAttribute('src');
+  if (crop.url) URL.revokeObjectURL(crop.url);
+  crop.url = '';
+  crop.nw = 0;
+  crop.nh = 0;
+  crop.pinch = 0;
+  crop.pointers.clear();
+}
+
+function cropCancel() {
+  cropClose();
+}
+
+function cropConfirm() {
+  if (!crop.nw || !crop.nh) return;
+  const sx = (crop.edge - crop.ox) / crop.k;
+  const sy = (crop.edge - crop.oy) / crop.k;
+  const side = crop.ring / crop.k;
+  const url = compressPhoto(cropEls.img, sx, sy, side);
+  if (!url) {
+    toast('Foto tidak bisa dikecilkan. Coba foto lain.');
+    return;
+  }
+  session.photo = url;
+  store.set(KEY_PHOTO, url);
+  renderPhoto();
+  cropClose();
+}
+
+function cropOpen(file) {
+  crop.url = URL.createObjectURL(file);
+  cropEls.img.onload = cropInit;
+  cropEls.img.onerror = () => {
+    cropClose();
+    toast('Foto tidak bisa dibaca. Coba foto lain.');
+  };
+  cropEls.modal.classList.remove('hidden');
+  cropEls.img.src = crop.url;
+}
+
+cropEls.stage.addEventListener('pointerdown', (event) => {
+  if (!crop.nw) return;
+  cropEls.stage.setPointerCapture(event.pointerId);
+  crop.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  if (crop.pointers.size === 2) {
+    const [a, b] = Array.from(crop.pointers.values());
+    crop.pinch = Math.hypot(a.x - b.x, a.y - b.y);
+  }
+});
+
+cropEls.stage.addEventListener('pointermove', (event) => {
+  const prev = crop.pointers.get(event.pointerId);
+  if (!prev || !crop.nw) return;
+  const cur = { x: event.clientX, y: event.clientY };
+  crop.pointers.set(event.pointerId, cur);
+  if (crop.pointers.size === 1) {
+    crop.ox += cur.x - prev.x;
+    crop.oy += cur.y - prev.y;
+    cropClamp();
+    cropApply();
+    return;
+  }
+  if (crop.pointers.size === 2) {
+    const [a, b] = Array.from(crop.pointers.values());
+    const dist = Math.hypot(a.x - b.x, a.y - b.y);
+    if (crop.pinch > 0 && dist > 0) {
+      const rect = cropEls.stage.getBoundingClientRect();
+      cropSetScale(crop.k * (dist / crop.pinch), (a.x + b.x) / 2 - rect.left, (a.y + b.y) / 2 - rect.top);
+    }
+    crop.pinch = dist;
+  }
+});
+
+function cropRelease(event) {
+  crop.pointers.delete(event.pointerId);
+  crop.pinch = 0;
+}
+
+cropEls.stage.addEventListener('pointerup', cropRelease);
+cropEls.stage.addEventListener('pointercancel', cropRelease);
+
+cropEls.stage.addEventListener('wheel', (event) => {
+  if (!crop.nw) return;
+  event.preventDefault();
+  const rect = cropEls.stage.getBoundingClientRect();
+  cropSetScale(crop.k * (event.deltaY < 0 ? 1.08 : 0.93), event.clientX - rect.left, event.clientY - rect.top);
+}, { passive: false });
+
 function openPhoto() {
   els.photoInput.click();
 }
 
-async function handlePhoto(input) {
+function handlePhoto(input) {
   const file = input.files && input.files[0];
   input.value = '';
   if (!file) return;
@@ -422,18 +649,7 @@ async function handlePhoto(input) {
     toast('Pilih file gambar ya.');
     return;
   }
-  try {
-    const url = await compressPhoto(file);
-    if (!url) {
-      toast('Foto tidak bisa dikecilkan. Coba foto lain.');
-      return;
-    }
-    session.photo = url;
-    store.set(KEY_PHOTO, url);
-    renderPhoto();
-  } catch (err) {
-    toast('Foto tidak bisa dibaca. Coba foto lain.');
-  }
+  cropOpen(file);
 }
 
 function clearPhoto() {
@@ -690,6 +906,9 @@ window.handleInput = handleInput;
 window.openPhoto = openPhoto;
 window.handlePhoto = handlePhoto;
 window.clearPhoto = clearPhoto;
+window.cropZoom = cropZoom;
+window.cropCancel = cropCancel;
+window.cropConfirm = cropConfirm;
 
 onAuthStateChanged(auth, (user) => {
   if (user) {
