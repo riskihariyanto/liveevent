@@ -88,6 +88,12 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .modes { display: flex; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 3px; gap: 3px; }
 .modes button { background: transparent; color: var(--muted); padding: 8px 14px; }
 .modes button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.phases button[aria-pressed="true"][data-phase="off"] { background: var(--danger); color: #fff; }
+.phases button[aria-pressed="true"][data-phase="full"] { background: var(--ok); color: #04140a; }
+.phases button[aria-pressed="true"][data-phase="emote"] { background: #d97706; color: #fff; }
+.pic { width: 40px; height: 40px; flex: none; border-radius: 50%; object-fit: cover; border: 2px solid rgba(255, 255, 255, 0.85); }
+.bubble-row { display: flex; align-items: center; gap: 10px; }
+.bubble-row .bubble { min-width: 0; }
 
 .layout {
   flex: 1;
@@ -186,9 +192,10 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
       <button id="modeAuto" onclick="setMode('auto')" aria-pressed="true">Otomatis</button>
       <button id="modeManual" onclick="setMode('manual')" aria-pressed="false">Manual</button>
     </div>
-    <div class="modes" role="group" aria-label="Reaksi emoji">
-      <button id="emoteOn" onclick="setEmotes(true)" aria-pressed="true">Emoji aktif</button>
-      <button id="emoteOff" onclick="setEmotes(false)" aria-pressed="false">Emoji mati</button>
+    <div class="modes phases" role="group" aria-label="Mode acara">
+      <button id="phaseOff" data-phase="off" onclick="setPhase('off')" aria-pressed="false" title="Chat dan ikon dimatikan, layar bersih">Hening</button>
+      <button id="phaseFull" data-phase="full" onclick="setPhase('full')" aria-pressed="true" title="Chat dan ikon aktif">Chat + Ikon</button>
+      <button id="phaseEmote" data-phase="emote" onclick="setPhase('emote')" aria-pressed="false" title="Hanya ikon, chat dimatikan">Ikon saja</button>
     </div>
     <button class="ghost" onclick="logout()">Keluar</button>
   </div>
@@ -237,7 +244,7 @@ const app = {
   user: null,
   unsubs: [],
   mode: 'auto',
-  emotesOn: true,
+  phase: 'full',
   items: new Map(),
   nodes: new Map(),
   busy: new Set(),
@@ -254,8 +261,9 @@ const els = {
   statusText: document.getElementById('statusText'),
   modeAuto: document.getElementById('modeAuto'),
   modeManual: document.getElementById('modeManual'),
-  emoteOn: document.getElementById('emoteOn'),
-  emoteOff: document.getElementById('emoteOff'),
+  phaseOff: document.getElementById('phaseOff'),
+  phaseFull: document.getElementById('phaseFull'),
+  phaseEmote: document.getElementById('phaseEmote'),
   queue: document.getElementById('queue'),
   pendingCount: document.getElementById('pendingCount'),
   words: document.getElementById('words'),
@@ -297,8 +305,9 @@ function emptyNote(text) {
 function renderToggles() {
   els.modeAuto.setAttribute('aria-pressed', String(app.mode === 'auto'));
   els.modeManual.setAttribute('aria-pressed', String(app.mode === 'manual'));
-  els.emoteOn.setAttribute('aria-pressed', String(app.emotesOn));
-  els.emoteOff.setAttribute('aria-pressed', String(!app.emotesOn));
+  els.phaseOff.setAttribute('aria-pressed', String(app.phase === 'off'));
+  els.phaseFull.setAttribute('aria-pressed', String(app.phase === 'full'));
+  els.phaseEmote.setAttribute('aria-pressed', String(app.phase === 'emote'));
   renderQueueEmpty();
 }
 
@@ -328,6 +337,10 @@ function formatTime(value) {
   return value.toDate().toLocaleTimeString('id-ID', { hour12: false });
 }
 
+function isPhoto(value) {
+  return typeof value === 'string' && value.indexOf('data:image/jpeg;base64,') === 0 && value.length <= 12000;
+}
+
 function buildItem(id, item) {
   const node = document.createElement('div');
   node.className = 'item';
@@ -345,6 +358,17 @@ function buildItem(id, item) {
   bubble.appendChild(who);
   bubble.appendChild(text);
 
+  const line = document.createElement('div');
+  line.className = 'bubble-row';
+  if (isPhoto(item.photo)) {
+    const pic = document.createElement('img');
+    pic.className = 'pic';
+    pic.alt = '';
+    pic.src = item.photo;
+    line.appendChild(pic);
+  }
+  line.appendChild(bubble);
+
   const meta = document.createElement('div');
   meta.className = 'meta';
   meta.textContent = formatTime(item.ts) + ' · ' + String(item.uid).slice(0, 8);
@@ -359,7 +383,7 @@ function buildItem(id, item) {
     actions.appendChild(button);
   });
 
-  node.appendChild(bubble);
+  node.appendChild(line);
   node.appendChild(meta);
   node.appendChild(actions);
   return node;
@@ -427,7 +451,7 @@ function renderBanned(list) {
 
 function renderState(data) {
   app.mode = data.mode === 'manual' ? 'manual' : 'auto';
-  app.emotesOn = data.emotes !== false;
+  app.phase = data.phase === 'off' || data.phase === 'emote' ? data.phase : 'full';
   const words = Array.isArray(data.words) ? data.words : [];
   els.wordCount.textContent = words.length + ' kata';
   if (!app.wordsDirty && document.activeElement !== els.words) els.words.value = words.join('\n');
@@ -455,7 +479,7 @@ async function startConsole() {
   try {
     const snap = await getDoc(stateRef);
     if (!snap.exists()) {
-      await setDoc(stateRef, { mode: 'auto', emotes: true, words: DEFAULT_WORDS });
+      await setDoc(stateRef, { mode: 'auto', phase: 'full', words: DEFAULT_WORDS });
     }
   } catch (err) {
     denied(err);
@@ -507,11 +531,12 @@ async function setMode(mode) {
   }
 }
 
-async function setEmotes(flag) {
+async function setPhase(phase) {
+  if (phase !== 'off' && phase !== 'full' && phase !== 'emote') return;
   try {
-    await setDoc(stateRef, { emotes: Boolean(flag) }, { merge: true });
+    await setDoc(stateRef, { phase }, { merge: true });
   } catch (err) {
-    toast('Gagal mengubah pengaturan emoji.');
+    toast('Gagal mengubah mode acara.');
   }
 }
 
@@ -521,13 +546,15 @@ async function approveItem(id) {
   app.busy.add(id);
   try {
     const batch = writeBatch(db);
-    batch.set(doc(db, 'approved', id), {
+    const payload = {
       uid: item.uid,
       nickname: item.nickname,
       text: item.text,
       color: item.color,
       ts: serverTimestamp()
-    });
+    };
+    if (isPhoto(item.photo)) payload.photo = item.photo;
+    batch.set(doc(db, 'approved', id), payload);
     batch.delete(doc(db, 'pending', id));
     await batch.commit();
   } catch (err) {
@@ -628,7 +655,7 @@ document.addEventListener('keydown', (event) => {
 window.submitLogin = submitLogin;
 window.logout = logout;
 window.setMode = setMode;
-window.setEmotes = setEmotes;
+window.setPhase = setPhase;
 window.markWordsDirty = markWordsDirty;
 window.saveWords = saveWords;
 
