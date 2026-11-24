@@ -49,13 +49,27 @@ body.idle { cursor: none; }
 .card {
   position: absolute;
   bottom: -26vh;
-  max-width: 30%;
+  display: flex;
+  align-items: center;
+  gap: 1.2vw;
+  max-width: 32%;
   padding: 1.6vh 1.6vw;
   border-radius: 2.4vh;
   will-change: transform, opacity;
   animation-name: drift;
   animation-timing-function: linear;
   animation-fill-mode: forwards;
+}
+.card .pic {
+  flex: none;
+  width: clamp(44px, 7.4vh, 120px);
+  height: clamp(44px, 7.4vh, 120px);
+  border-radius: 50%;
+  object-fit: cover;
+  border: 0.35vh solid rgba(255, 255, 255, 0.9);
+}
+.card .body {
+  min-width: 0;
 }
 .card .who {
   display: block;
@@ -141,6 +155,8 @@ const QUEUE_MAX = 100;
 const MAX_FLOATERS = 60;
 const EMOTE_PER_BATCH = 10;
 const SEEN_MAX = 500;
+const PHOTO_PREFIX = 'data:image/jpeg;base64,';
+const PHOTO_MAX_CHARS = 12000;
 
 const els = {
   chat: document.getElementById('chat'),
@@ -151,6 +167,7 @@ const els = {
 const runtime = {
   queue: [],
   cards: 0,
+  phase: 'full',
   lane: 0,
   floaters: 0,
   idleTimer: 0,
@@ -182,8 +199,19 @@ function addCard(data) {
   text.className = 'text';
   text.textContent = data.text;
 
-  el.appendChild(who);
-  el.appendChild(text);
+  const body = document.createElement('div');
+  body.className = 'body';
+  body.appendChild(who);
+  body.appendChild(text);
+
+  if (data.photo) {
+    const pic = document.createElement('img');
+    pic.className = 'pic';
+    pic.alt = '';
+    pic.src = data.photo;
+    el.appendChild(pic);
+  }
+  el.appendChild(body);
 
   const duration = CARD_TIME_MIN + Math.random() * CARD_TIME_SPAN;
   const lane = runtime.lane % LANES;
@@ -208,16 +236,21 @@ function addCard(data) {
 }
 
 function drainQueue() {
-  if (!runtime.queue.length) return;
+  if (runtime.phase !== 'full' || !runtime.queue.length) return;
   if (addCard(runtime.queue[0])) runtime.queue.shift();
 }
 
 function enqueueChat(data) {
+  if (runtime.phase !== 'full') return;
   if (typeof data.text !== 'string' || typeof data.nickname !== 'string') return;
+  const photo = typeof data.photo === 'string'
+    && data.photo.indexOf(PHOTO_PREFIX) === 0
+    && data.photo.length <= PHOTO_MAX_CHARS ? data.photo : '';
   runtime.queue.push({
     nickname: runtime.censor(data.nickname),
     text: runtime.censor(data.text),
-    color: data.color
+    color: data.color,
+    photo
   });
   while (runtime.queue.length > QUEUE_MAX) runtime.queue.shift();
 }
@@ -249,6 +282,7 @@ function launchEmote(emoji) {
 }
 
 function spawnEmotes(counts) {
+  if (runtime.phase === 'off') return;
   if (!counts || typeof counts !== 'object') return;
   Object.keys(counts).forEach((key) => {
     if (!Object.prototype.hasOwnProperty.call(EMOTES, key)) return;
@@ -262,7 +296,15 @@ function spawnEmotes(counts) {
 function listenState() {
   onSnapshot(doc(db, 'config', 'state'), { includeMetadataChanges: true }, (snap) => {
     els.offline.classList.toggle('hidden', !snap.metadata.fromCache);
-    if (snap.exists()) runtime.censor = buildCensor(snap.data().words);
+    if (!snap.exists()) return;
+    const data = snap.data();
+    runtime.censor = buildCensor(data.words);
+    runtime.phase = data.phase === 'off' || data.phase === 'emote' ? data.phase : 'full';
+    if (runtime.phase !== 'full') runtime.queue.length = 0;
+    if (runtime.phase === 'off') {
+      els.chat.replaceChildren();
+      els.sky.replaceChildren();
+    }
   }, () => {
     els.offline.classList.remove('hidden');
   });
