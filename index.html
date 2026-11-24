@@ -3,17 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0b0d12">
+<meta name="theme-color" content="#061230">
 <title>Live Chat</title>
 <style>
 :root {
-  --bg: #0b0d12;
-  --panel: #151922;
-  --line: #232938;
-  --text: #f2f4f8;
-  --muted: #8b93a7;
-  --accent: #3b82f6;
-  --danger: #ef4444;
+  --bg: #061230;
+  --panel: #0d1f4a;
+  --panel-hi: #14306b;
+  --line: #1f3a78;
+  --text: #eef3ff;
+  --muted: #9db0d8;
+  --accent: #2563eb;
+  --accent-hi: #3b82f6;
+  --gold: #fbbf24;
+  --danger: #f87171;
   --ok: #22c55e;
   box-sizing: border-box;
 }
@@ -21,7 +24,8 @@
 html, body {
   height: 100%;
   margin: 0;
-  background: var(--bg);
+  background: radial-gradient(120% 80% at 50% 0%, #0b2257 0%, var(--bg) 60%);
+  background-color: var(--bg);
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   -webkit-text-size-adjust: 100%;
@@ -39,6 +43,7 @@ body { overflow: hidden; }
   flex-direction: column;
   padding: 16px;
   gap: 14px;
+  overflow-y: auto;
 }
 .hidden { display: none !important; }
 button, textarea, input { font: inherit; color: inherit; touch-action: manipulation; }
@@ -51,7 +56,14 @@ button { cursor: pointer; border: 0; }
   width: 100%;
   margin: 0 auto;
 }
-.center h1 { margin: 0; font-size: 1.7rem; letter-spacing: -0.01em; }
+.center h1 {
+  margin: 0;
+  padding-bottom: 10px;
+  font-size: 1.7rem;
+  letter-spacing: -0.01em;
+  border-bottom: 3px solid var(--gold);
+  align-self: flex-start;
+}
 .center p { margin: 0; color: var(--muted); line-height: 1.5; }
 .field {
   width: 100%;
@@ -62,15 +74,38 @@ button { cursor: pointer; border: 0; }
   border-radius: 14px;
   outline: none;
 }
-.field:focus { border-color: var(--accent); }
+.field::placeholder { color: #6f86b8; }
+.field:focus { border-color: var(--accent-hi); }
+.field:disabled { opacity: 0.45; }
 .primary {
   padding: 14px 20px;
   font-weight: 700;
-  background: var(--accent);
+  background: linear-gradient(180deg, var(--accent-hi), var(--accent));
   color: #fff;
   border-radius: 14px;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
 }
 .primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.photo-pick { display: flex; align-items: center; gap: 14px; }
+.avatar-btn {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  flex: none;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--panel);
+  border: 2px dashed var(--accent-hi);
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.avatar-btn img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo-side { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.photo-side strong { font-size: 0.95rem; }
+.photo-side small { color: var(--muted); line-height: 1.35; }
 
 .top {
   display: flex;
@@ -79,7 +114,8 @@ button { cursor: pointer; border: 0; }
   gap: 12px;
 }
 .who { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 600; }
-.who span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.who .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.who .pic { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; flex: none; border: 2px solid var(--accent-hi); }
 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); flex: none; }
 .dot.on { background: var(--ok); }
 .link { background: none; color: var(--muted); padding: 6px 4px; font-size: 0.9rem; text-decoration: underline; }
@@ -89,12 +125,16 @@ button { cursor: pointer; border: 0; }
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 10px;
   padding: 12px;
+  background: rgba(13, 31, 74, 0.55);
   border: 1px dashed var(--line);
   border-radius: 16px;
 }
+.stagebox .pic { width: 46px; height: 46px; border-radius: 50%; object-fit: cover; flex: none; border: 2px solid rgba(255, 255, 255, 0.85); }
 .bubble {
   max-width: 100%;
+  min-width: 0;
   padding: 10px 16px;
   border-radius: 18px;
   line-height: 1.35;
@@ -118,22 +158,22 @@ button { cursor: pointer; border: 0; }
 .composer textarea { resize: none; display: block; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .count { color: var(--muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
-.count.warn { color: var(--danger); }
+.count.warn { color: var(--gold); }
 
 .spacer { flex: 1; min-height: 0; }
 
-.emotes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.emotes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
 .emote {
-  aspect-ratio: 1;
-  font-size: 2.1rem;
+  height: clamp(88px, 15dvh, 150px);
+  font-size: clamp(3rem, 8dvh, 4.8rem);
   line-height: 1;
-  background: var(--panel);
+  background: linear-gradient(180deg, var(--panel-hi), var(--panel));
   border: 1px solid var(--line);
-  border-radius: 20px;
-  transition: transform 0.08s ease;
+  border-radius: 24px;
+  transition: transform 0.08s ease, background-color 0.08s ease;
 }
-.emote:active { transform: scale(0.9); }
-.emote:disabled { opacity: 0.4; }
+.emote:active { transform: scale(0.93); border-color: var(--gold); }
+.emote:disabled { opacity: 0.35; }
 
 .toast {
   position: fixed;
@@ -142,8 +182,8 @@ button { cursor: pointer; border: 0; }
   transform: translate(-50%, 20px);
   max-width: calc(100% - 32px);
   padding: 10px 16px;
-  background: #1f2636;
-  border: 1px solid var(--line);
+  background: var(--panel-hi);
+  border: 1px solid var(--accent-hi);
   border-radius: 12px;
   font-size: 0.9rem;
   opacity: 0;
@@ -153,17 +193,19 @@ button { cursor: pointer; border: 0; }
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
-@media (max-height: 640px) {
-  .stagebox { min-height: 64px; }
-  .emote { font-size: 1.7rem; }
-}
 .notice {
   padding: 10px 14px;
-  background: #2a2412;
-  border: 1px solid #6b5a1a;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.45);
   border-radius: 12px;
-  color: #fbbf24;
+  color: #fcd34d;
   font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+@media (max-height: 700px) {
+  .stagebox { min-height: 64px; }
+  .emote { height: 80px; font-size: 2.8rem; }
 }
 </style>
 </head>
@@ -171,18 +213,28 @@ button { cursor: pointer; border: 0; }
 <main id="app">
   <section id="screenJoin" class="screen center hidden">
     <h1>Gabung Live Chat</h1>
-    <p>Pilih nama samaran. Tanpa daftar, tanpa email.</p>
+    <p>Pilih nama samaran dan foto kecil kalau mau. Tanpa daftar, tanpa email.</p>
+    <div class="photo-pick">
+      <button id="photoBtn" class="avatar-btn" type="button" onclick="openPhoto()" aria-label="Pilih foto profil"><span id="photoHint">+ Foto</span><img id="joinPhoto" class="hidden" alt=""></button>
+      <div class="photo-side">
+        <strong>Foto profil (opsional)</strong>
+        <small>Dikecilkan otomatis sebelum dikirim.</small>
+        <button id="photoClear" class="link hidden" type="button" onclick="clearPhoto()">Hapus foto</button>
+      </div>
+      <input id="photoInput" class="hidden" type="file" accept="image/*" onchange="handlePhoto(this)">
+    </div>
     <input id="nickInput" class="field" type="text" autocomplete="off" autocapitalize="words" placeholder="Nickname kamu" aria-label="Nickname">
     <button class="primary" onclick="submitNickname()">Masuk</button>
   </section>
 
   <section id="screenChat" class="screen hidden">
     <div class="top">
-      <div class="who"><span id="dot" class="dot"></span><span id="whoName"></span></div>
-      <button class="link" onclick="changeNickname()">Ganti nama</button>
+      <div class="who"><span id="dot" class="dot"></span><img id="whoPhoto" class="pic hidden" alt=""><span id="whoName" class="name"></span></div>
+      <button class="link" onclick="changeNickname()">Ubah profil</button>
     </div>
-    <div id="notice" class="notice hidden">Acara belum dimulai. Tunggu moderator membuka sesi.</div>
+    <div id="notice" class="notice hidden"></div>
     <div class="stagebox">
+      <img id="bubblePhoto" class="pic hidden" alt="">
       <div id="bubble" class="bubble"><b id="bubbleName"></b><span id="bubbleText"></span></div>
     </div>
     <div id="swatches" class="swatches" role="group" aria-label="Warna gelembung"></div>
@@ -223,6 +275,11 @@ const TAP_CAP = 300;
 const TAP_PER_FLUSH = 12;
 const KEY_NICK = 'lec.nick';
 const KEY_COLOR = 'lec.color';
+const KEY_PHOTO = 'lec.photo';
+const PHOTO_SIZES = [96, 72, 56];
+const PHOTO_QUALITIES = [0.72, 0.55, 0.4];
+const PHOTO_MAX_CHARS = 11000;
+const PLACEHOLDER_CHAT = 'Tulis pesan singkat…';
 
 const store = {
   get(key) {
@@ -238,7 +295,10 @@ const session = {
   nickname: '',
   color: COLORS[5],
   mode: 'auto',
+  phase: 'full',
+  photo: '',
   ready: false,
+  chatOn: true,
   emotesOn: true,
   banned: false,
   online: false,
@@ -271,6 +331,12 @@ const els = {
   count: document.getElementById('count'),
   sendBtn: document.getElementById('sendBtn'),
   toast: document.getElementById('toast'),
+  photoHint: document.getElementById('photoHint'),
+  joinPhoto: document.getElementById('joinPhoto'),
+  photoClear: document.getElementById('photoClear'),
+  photoInput: document.getElementById('photoInput'),
+  whoPhoto: document.getElementById('whoPhoto'),
+  bubblePhoto: document.getElementById('bubblePhoto'),
   emotes: document.querySelectorAll('.emote')
 };
 
@@ -294,6 +360,86 @@ function toast(message) {
 function renderStatus() {
   els.dot.classList.toggle('on', session.online);
   els.dot.title = session.online ? 'Terhubung' : 'Menyambung ulang…';
+}
+
+function renderPhoto() {
+  const has = Boolean(session.photo);
+  [els.joinPhoto, els.whoPhoto, els.bubblePhoto].forEach((node) => {
+    if (has) node.src = session.photo;
+    node.classList.toggle('hidden', !has);
+  });
+  els.photoHint.classList.toggle('hidden', has);
+  els.photoClear.classList.toggle('hidden', !has);
+}
+
+function loadImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('image'));
+    };
+    img.src = url;
+  });
+}
+
+async function compressPhoto(file) {
+  const img = await loadImage(file);
+  const side = Math.min(img.naturalWidth, img.naturalHeight);
+  if (!side) return '';
+  const sx = (img.naturalWidth - side) / 2;
+  const sy = (img.naturalHeight - side) / 2;
+  for (const size of PHOTO_SIZES) {
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, size, size);
+    ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+    for (const quality of PHOTO_QUALITIES) {
+      const url = canvas.toDataURL('image/jpeg', quality);
+      if (url.length <= PHOTO_MAX_CHARS) return url;
+    }
+  }
+  return '';
+}
+
+function openPhoto() {
+  els.photoInput.click();
+}
+
+async function handlePhoto(input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  if (file.type.indexOf('image/') !== 0) {
+    toast('Pilih file gambar ya.');
+    return;
+  }
+  try {
+    const url = await compressPhoto(file);
+    if (!url) {
+      toast('Foto tidak bisa dikecilkan. Coba foto lain.');
+      return;
+    }
+    session.photo = url;
+    store.set(KEY_PHOTO, url);
+    renderPhoto();
+  } catch (err) {
+    toast('Foto tidak bisa dibaca. Coba foto lain.');
+  }
+}
+
+function clearPhoto() {
+  session.photo = '';
+  store.set(KEY_PHOTO, '');
+  renderPhoto();
 }
 
 function renderBubble() {
@@ -335,7 +481,7 @@ function cooldownLeft() {
 }
 
 function canSend() {
-  return Boolean(session.uid) && session.ready && !session.banned && !session.sending && cooldownLeft() === 0;
+  return Boolean(session.uid) && session.ready && session.chatOn && !session.banned && !session.sending && cooldownLeft() === 0;
 }
 
 function updateSendButton() {
@@ -355,10 +501,22 @@ function startCooldown(ms) {
   updateSendButton();
 }
 
+function noticeText() {
+  if (!session.ready) return 'Acara belum dimulai. Tunggu moderator membuka sesi.';
+  if (session.phase === 'off') return 'Sesi sedang dijeda. Chat dan reaksi dinonaktifkan sementara.';
+  if (session.phase === 'emote') return 'Chat dinonaktifkan sementara. Kamu masih bisa kirim reaksi.';
+  return '';
+}
+
 function refreshControls() {
-  els.notice.classList.toggle('hidden', session.ready);
+  const message = noticeText();
+  els.notice.textContent = message;
+  els.notice.classList.toggle('hidden', !message);
   const off = !session.ready || session.banned || !session.emotesOn;
   els.emotes.forEach((button) => { button.disabled = off; });
+  const chatOff = !session.ready || !session.chatOn;
+  els.msg.disabled = chatOff;
+  els.msg.placeholder = chatOff ? 'Chat sedang dinonaktifkan' : PLACEHOLDER_CHAT;
   renderStatus();
   updateSendButton();
 }
@@ -418,13 +576,15 @@ async function sendChat() {
   try {
     const batch = writeBatch(db);
     batch.set(doc(db, 'users', session.uid), { lastChat: serverTimestamp() });
-    batch.set(doc(collection(db, target)), {
+    const payload = {
       uid: session.uid,
       nickname: safeNick,
       text: safeText,
       color: session.color,
       ts: serverTimestamp()
-    });
+    };
+    if (session.photo) payload.photo = session.photo;
+    batch.set(doc(collection(db, target)), payload);
     const commit = batch.commit();
     commit.catch(() => {});
     const outcome = await Promise.race([
@@ -491,7 +651,10 @@ function attach() {
       const data = snap.data();
       session.ready = true;
       session.mode = data.mode === 'manual' ? 'manual' : 'auto';
-      session.emotesOn = data.emotes !== false;
+      session.phase = data.phase === 'off' || data.phase === 'emote' ? data.phase : 'full';
+      session.chatOn = session.phase === 'full';
+      session.emotesOn = session.phase !== 'off';
+      if (!session.emotesOn) session.taps = {};
       session.censor = buildCensor(data.words);
     } else {
       session.ready = false;
@@ -524,6 +687,9 @@ window.sendChat = sendChat;
 window.sendEmote = sendEmote;
 window.pickColor = pickColor;
 window.handleInput = handleInput;
+window.openPhoto = openPhoto;
+window.handlePhoto = handlePhoto;
+window.clearPhoto = clearPhoto;
 
 onAuthStateChanged(auth, (user) => {
   if (user) {
@@ -542,8 +708,11 @@ onAuthStateChanged(auth, (user) => {
 
 const savedColor = store.get(KEY_COLOR);
 if (savedColor && COLORS.indexOf(savedColor) !== -1) session.color = savedColor;
+const savedPhoto = store.get(KEY_PHOTO);
+if (savedPhoto && savedPhoto.indexOf('data:image/jpeg;base64,') === 0 && savedPhoto.length <= PHOTO_MAX_CHARS) session.photo = savedPhoto;
 buildSwatches();
 renderSwatches();
+renderPhoto();
 renderStatus();
 
 const savedNick = store.get(KEY_NICK);
